@@ -10,104 +10,134 @@
 #include <avr/io.h>
 #include "timer.h"
 #ifdef _SIMULATE_
-#include "io.h"
 #include "simAVRHeader.h"
+#include "io.h"
 #endif
 
-
-enum States{init, increment, decrement, reset, wait} counterState;
-unsigned int i = 0;
 unsigned char tmpA = 0x00;
 unsigned char tmpB = 0x00;
-unsigned char counter = 0;
-unsigned char holdPeriod = 0;
+unsigned char periodCounter = 0;
 
-
+enum States{start, wait, increment, decrement, reset} counterState;
 
 void tick(){
-	switch(counterState){
-		case init:
+  switch(counterState){
+    case start:
+      tmpB = 0x00;
+      counterState = wait;
+	  periodCounter = 0;
+      break;
+	  
+    case wait:
+		periodCounter = 0;
+		if((tmpA & 0x01) && !(tmpA & 0x02)){
+			counterState = increment; 
+			if(tmpB < 9)
+			  tmpB++;
+		}
+		else if(!(tmpA & 0x01) && (tmpA & 0x02)){
+			counterState = decrement; 
+			if(tmpB > 0)
+			  tmpB--;
+		  }
+		 else if((tmpA & 0x01) && (tmpA & 0x02)){
+			counterState = reset; 
+			tmpB = 0;
+		  }
+		 else if(!(tmpA & 0x01) && !(tmpA & 0x02))
 			counterState = wait;
-			counter = 0;
-			holdPeriod = 0;
-			break;
-			
-		case wait:
-			if(tmpA & 0x01 && tmpA & 0x02){
-				counterState = reset;
-				counter = 0;
+		  break;
+	  
+    case increment:
+      if((tmpA & 0x01) && !(tmpA & 0x02)){
+        counterState = increment;
+		if(periodCounter <= 10)
+			periodCounter++;
+		else if(periodCounter > 10){
+			if(tmpB < 9){
+				tmpB++;
+				periodCounter = 0;
 			}
-			else if(tmpA & 0x01){
-				counterState = increment;
-				counter++;
-			}
-			else if(tmpA & 0x02){
-				counterState = decrement;
-				counter--;
-			}
-			break;
-			
-		case increment:
-			if(tmpA & 0x01 && tmpA & 0x02){
-				counterState = reset;
-				counter = 0;
-			}
-			else if(tmpA & 0x01){
-				counterState = increment;
-				holdPeriod++;
-			}
-			else
-				counterState = wait;
-			if(holdPeriod > 5){
-				counter++;
-				holdPeriod = 0;
-			}
-			break;
-			
-		case decrement:
-			if(tmpA & 0x01 && tmpA & 0x02){
-				counterState = reset;
-				counter = 0;
-			}
-			else if(tmpA & 0x02){
-				counterState = decrement;
-				holdPeriod++;
-			}
-			else
-				counterState = wait;
-			if(holdPeriod > 5){
-				counter--;
-				holdPeriod = 0;
-			}
-			break;
-		case reset:
-			if(tmpA & 0x01 && tmpA & 0x02){
-				counterState = reset;
-				counter = 0;
-			}
-			else
-				counterState = wait;
-	}
-}
+		}
+      }
+      else if(!(tmpA & 0x01) && (tmpA & 0x02)){
+        counterState = decrement;
+		periodCounter = 0;
+        if(tmpB > 0)
+          tmpB--;
+      }
+      else if((tmpA & 0x01) && (tmpA & 0x02)){
+        counterState = reset; 
+        tmpB = 0;
+      }
+      else if(!(tmpA & 0x01) && !(tmpA & 0x02))
+        counterState = wait;
+      break;
 
+    case decrement:
+      if((tmpA & 0x01) && !(tmpA & 0x02)){
+		  periodCounter = 0;
+        counterState = increment;
+        if(tmpB < 9)
+          tmpB++;
+      }
+      else if(!(tmpA & 0x01) && (tmpA & 0x02)){
+        counterState = decrement;
+		if(periodCounter <= 10)
+			periodCounter++;
+		if(periodCounter > 10){
+			if(tmpB > 0){
+				tmpB--;
+				periodCounter = 0;
+			}
+		}
+      }
+      else if((tmpA & 0x01) && (tmpA & 0x02)){
+        counterState = reset; 
+        tmpB = 0;
+      }
+      else if(!(tmpA & 0x01) && !(tmpA & 0x02))
+        counterState = wait;
+      break;
+
+    case reset:
+		periodCounter = 0;
+      if((tmpA & 0x01) && (tmpA & 0x02)){
+        counterState = reset; 
+        tmpB = 0;
+      }
+      else if(!(tmpA & 0x01) && !(tmpA & 0x02))
+        counterState = wait;       
+      else if((tmpA & 0x01) && !(tmpA & 0x02)){
+        counterState = increment;
+        if(tmpB < 9)
+          tmpB++;
+      }
+      else if(!(tmpA & 0x01) && (tmpA & 0x02)){
+        counterState = increment;
+        if(tmpB > 0)
+          tmpB--;
+      }
+      break;
+  } 
+}
 int main(void) {
-    /* Insert DDR and PORT initializations */
-	DDRC  = 0xFF;
-	PORTC = 0x00;
-	DDRB  = 0xFF;
-	PORTB = 0x00;
-	TimerSet(200);
+	DDRA = 0x00; tmpA = 0x00;
+	DDRC = 0xFF; 
+	DDRD = 0xFF;
+	tmpB = 0x00;
+	TimerSet(100);
 	TimerOn();
 	LCD_init();
-    /* Insert your solution below */
+	counterState = start;
     while (1) {
 		PORTA = PINA;
-		tmpA = PORTA;
+		tmpA = PORTA & 0x03;
 		tick();
-		tmpB = counter;
-		PORTB = tmpB;
+		LCD_WriteData(tmpB + '0');
 		while(!TimerFlag);
 		TimerFlag = 0;
     }
     return 1;
 }
+
